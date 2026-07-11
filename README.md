@@ -8,7 +8,7 @@
   A native macOS app that remembers where your app windows belong.
 </p>
 
-![Stay Put window rules](docs/stay-put-settings.png)
+![Stay Put window rules](docs/stay-put-settings-2026.png)
 
 Stay Put restores the primary windows of apps you choose after display changes, wake, login, and app launches. It is designed for switching between an external monitor and a MacBook display without repeatedly fixing window sizes and positions.
 
