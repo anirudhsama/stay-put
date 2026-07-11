@@ -55,6 +55,13 @@
         }
       ],
       "lighting" : "individual",
+      "position" : {
+        "scale" : 0.8,
+        "translation-in-points" : [
+          0,
+          0
+        ]
+      },
       "refractivity" : {
         "depth" : 0.00078125,
         "enabled" : false,
