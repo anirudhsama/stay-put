@@ -3,6 +3,7 @@ import SwiftUI
 
 @MainActor
 final class SettingsWindowController: NSWindowController, NSWindowDelegate {
+    private static let frameAutosaveName = "SettingsWindow"
     private static var shared: SettingsWindowController?
     private static var store: RuleStore?
 
@@ -36,12 +37,16 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
         window.backgroundColor = .clear
         window.isMovableByWindowBackground = true
         window.minSize = NSSize(width: 760, height: 500)
-        window.setFrameAutosaveName("SettingsWindow")
-        window.center()
-        window.delegate = self
         window.contentViewController = NSHostingController(
             rootView: SettingsView().environmentObject(store)
         )
+
+        let restoredFrame = window.setFrameUsingName(Self.frameAutosaveName)
+        window.setFrameAutosaveName(Self.frameAutosaveName)
+        if !restoredFrame {
+            window.center()
+        }
+        window.delegate = self
     }
 
     @available(*, unavailable)
