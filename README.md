@@ -21,6 +21,8 @@ Stay Put restores the primary windows of apps you choose after display changes, 
 - Track one primary window per app while ignoring later pop-outs such as Slack huddles and Messages conversations.
 - Preserve remembered dimensions when a smaller display temporarily requires clamping.
 - Launch at login using `SMAppService`.
+- Add installed apps with the standard Open panel or by dragging them from Finder.
+- Select, copy, and remove multiple rules with native menu and keyboard commands; removals support Undo.
 - Native SwiftUI and AppKit interface with a Dock app, menu-bar shortcut, and macOS settings window.
 
 ## How window selection works

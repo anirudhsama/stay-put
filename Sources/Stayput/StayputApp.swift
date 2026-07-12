@@ -1,6 +1,23 @@
 import AppKit
 import SwiftUI
 
+struct SelectedRuleCommands {
+    let canAct: Bool
+    let copy: () -> Void
+    let remove: () -> Void
+}
+
+private struct SelectedRuleCommandsKey: FocusedValueKey {
+    typealias Value = SelectedRuleCommands
+}
+
+extension FocusedValues {
+    var selectedRuleCommands: SelectedRuleCommands? {
+        get { self[SelectedRuleCommandsKey.self] }
+        set { self[SelectedRuleCommandsKey.self] = newValue }
+    }
+}
+
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -45,6 +62,28 @@ struct StayPutApp: App {
                 Button("Settings…") { SettingsWindowController.show() }
                     .keyboardShortcut(",", modifiers: .command)
             }
+            RulesCommands(store: store)
+        }
+    }
+}
+
+private struct RulesCommands: Commands {
+    let store: RuleStore
+    @FocusedValue(\.selectedRuleCommands) private var selectedRuleCommands
+
+    var body: some Commands {
+        CommandMenu("Rules") {
+            Button("Apply Rules") { store.applyNow() }
+                .keyboardShortcut("r", modifiers: .command)
+            Button("Refresh Running Applications") { store.refreshApplications() }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+            Divider()
+            Button("Copy Selected Rules") { selectedRuleCommands?.copy() }
+                .keyboardShortcut("c", modifiers: .command)
+                .disabled(selectedRuleCommands?.canAct != true)
+            Button("Remove Selected Rules") { selectedRuleCommands?.remove() }
+                .keyboardShortcut(.delete, modifiers: .command)
+                .disabled(selectedRuleCommands?.canAct != true)
         }
     }
 }

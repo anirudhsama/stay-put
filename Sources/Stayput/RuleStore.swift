@@ -66,22 +66,46 @@ final class RuleStore: ObservableObject {
     }
 
     func addRule(for application: RunningApplication) {
-        guard !rules.contains(where: { $0.bundleIdentifier == application.bundleIdentifier }) else {
-            return
-        }
-        let size = manager.frontWindowSize(for: application.bundleIdentifier) ?? CGSize(width: 900, height: 650)
-        rules.append(WindowRule(
+        addRule(
             bundleIdentifier: application.bundleIdentifier,
             applicationName: application.name,
-            placement: .center,
-            centeredWidth: size.width,
-            centeredHeight: size.height
-        ))
-        applyNow()
+            icon: application.icon
+        )
     }
 
-    func removeRules(at offsets: IndexSet) {
-        rules.remove(atOffsets: offsets)
+    @discardableResult
+    func addRule(forApplicationAt url: URL) -> Bool {
+        guard url.pathExtension.localizedCaseInsensitiveCompare("app") == .orderedSame,
+              let bundle = Bundle(url: url),
+              let bundleIdentifier = bundle.bundleIdentifier else {
+            statusMessage = "Choose a macOS application."
+            return false
+        }
+
+        let applicationName = (bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
+            ?? (bundle.object(forInfoDictionaryKey: "CFBundleName") as? String)
+            ?? url.deletingPathExtension().lastPathComponent
+        let icon = NSWorkspace.shared.icon(forFile: url.path)
+        addRule(
+            bundleIdentifier: bundleIdentifier,
+            applicationName: applicationName,
+            icon: icon
+        )
+        return true
+    }
+
+    func removeRules(withIDs ids: Set<WindowRule.ID>, undoManager: UndoManager? = nil) {
+        guard !ids.isEmpty else { return }
+        let removed = rules.enumerated().compactMap { index, rule in
+            ids.contains(rule.id) ? (index, rule) : nil
+        }
+        guard !removed.isEmpty else { return }
+
+        rules.removeAll { ids.contains($0.id) }
+        undoManager?.registerUndo(withTarget: self) { store in
+            store.restoreRules(removed, undoManager: undoManager)
+        }
+        undoManager?.setActionName(removed.count == 1 ? "Remove Rule" : "Remove Rules")
     }
 
     func captureSize(for ruleID: UUID) {
@@ -128,6 +152,44 @@ final class RuleStore: ObservableObject {
     private func save() {
         guard let data = try? JSONEncoder().encode(rules) else { return }
         UserDefaults.standard.set(data, forKey: defaultsKey)
+    }
+
+    private func addRule(
+        bundleIdentifier: String,
+        applicationName: String,
+        icon: NSImage?
+    ) {
+        guard !rules.contains(where: { $0.bundleIdentifier == bundleIdentifier }) else {
+            statusMessage = "A rule for \(applicationName) already exists."
+            return
+        }
+        if let icon {
+            applicationIconCache[bundleIdentifier] = icon
+        }
+        let size = manager.frontWindowSize(for: bundleIdentifier) ?? CGSize(width: 900, height: 650)
+        rules.append(WindowRule(
+            bundleIdentifier: bundleIdentifier,
+            applicationName: applicationName,
+            placement: .center,
+            centeredWidth: size.width,
+            centeredHeight: size.height
+        ))
+        statusMessage = "Added a rule for \(applicationName)."
+        applyNow()
+    }
+
+    private func restoreRules(
+        _ restored: [(Int, WindowRule)],
+        undoManager: UndoManager?
+    ) {
+        for (index, rule) in restored.sorted(by: { $0.0 < $1.0 }) {
+            rules.insert(rule, at: min(index, rules.endIndex))
+        }
+        let ids = Set(restored.map { $0.1.id })
+        undoManager?.registerUndo(withTarget: self) { store in
+            store.removeRules(withIDs: ids, undoManager: undoManager)
+        }
+        undoManager?.setActionName(restored.count == 1 ? "Restore Rule" : "Restore Rules")
     }
 
     private func installObservers() {

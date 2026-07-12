@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import StayputCore
+import UniformTypeIdentifiers
 
 private enum SettingsTab: String, CaseIterable, Identifiable {
     case windows
@@ -27,11 +28,18 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
 }
 
 struct SettingsView: View {
-    @State private var selectedTab: SettingsTab? = .windows
+    @AppStorage("selectedSettingsTab") private var selectedTab = SettingsTab.windows.rawValue
+
+    private var selection: Binding<SettingsTab?> {
+        Binding(
+            get: { SettingsTab(rawValue: selectedTab) ?? .windows },
+            set: { selectedTab = ($0 ?? .windows).rawValue }
+        )
+    }
 
     var body: some View {
         NavigationSplitView(columnVisibility: .constant(.all)) {
-            List(SettingsTab.allCases, selection: $selectedTab) { tab in
+            List(SettingsTab.allCases, selection: selection) { tab in
                 Label(tab.title, systemImage: tab.systemImage)
                     .tag(tab)
             }
@@ -43,7 +51,7 @@ struct SettingsView: View {
             .toolbar(removing: .sidebarToggle)
             .scrollEdgeEffectStyleSoftIfAvailable()
         } detail: {
-            SettingsDetailView(tab: selectedTab ?? .windows)
+            SettingsDetailView(tab: SettingsTab(rawValue: selectedTab) ?? .windows)
         }
         .navigationTitle("Settings")
         .navigationSplitViewStyle(.balanced)
@@ -82,7 +90,9 @@ private struct SidebarVisualEffect: NSViewRepresentable {
 
 private struct WindowRulesPane: View {
     @EnvironmentObject private var store: RuleStore
+    @Environment(\.undoManager) private var undoManager
     @State private var selectedApplicationID: RunningApplication.ID?
+    @State private var selectedRuleIDs: Set<WindowRule.ID> = []
 
     private var selectedApplication: RunningApplication? {
         store.runningApplications.first { $0.id == selectedApplicationID }
@@ -109,6 +119,12 @@ private struct WindowRulesPane: View {
             }
         }
         .padding(20)
+        .onDeleteCommand(perform: removeSelectedRules)
+        .focusedValue(\.selectedRuleCommands, SelectedRuleCommands(
+            canAct: !selectedRuleIDs.isEmpty,
+            copy: copySelectedRules,
+            remove: removeSelectedRules
+        ))
     }
 
     private var permissionBanner: some View {
@@ -134,7 +150,7 @@ private struct WindowRulesPane: View {
                 )
                 .frame(maxWidth: .infinity, minHeight: 280)
             } else {
-                List {
+                List(selection: $selectedRuleIDs) {
                     ForEach($store.rules) { $rule in
                         RuleRow(
                             rule: $rule,
@@ -142,10 +158,32 @@ private struct WindowRulesPane: View {
                         ) {
                             store.captureSize(for: rule.id)
                         }
+                        .tag(rule.id)
+                        .contextMenu {
+                            Button("Capture Current Size") {
+                                store.captureSize(for: rule.id)
+                            }
+                            Divider()
+                            Button("Copy Rule") {
+                                copyRules(withIDs: selectedRuleIDs.contains(rule.id)
+                                    ? selectedRuleIDs
+                                    : [rule.id])
+                            }
+                            Button("Remove Rule", role: .destructive) {
+                                removeRules(withIDs: selectedRuleIDs.contains(rule.id)
+                                    ? selectedRuleIDs
+                                    : [rule.id])
+                            }
+                        }
                     }
-                    .onDelete(perform: store.removeRules)
+                    .onDelete { offsets in
+                        removeRules(withIDs: Set(offsets.map { store.rules[$0].id }))
+                    }
                 }
                 .listStyle(.inset)
+                .dropDestination(for: URL.self) { urls, _ in
+                    addApplications(at: urls)
+                }
             }
         }
     }
@@ -175,14 +213,59 @@ private struct WindowRulesPane: View {
             }
             .disabled(selectedApplication == nil)
 
+            Button("Choose Application…", action: chooseApplications)
+
             Button {
                 store.refreshApplications()
             } label: {
                 Image(systemName: "arrow.clockwise")
             }
             .help("Refresh running apps")
+            .accessibilityLabel("Refresh running apps")
             Spacer()
         }
+    }
+
+    private func chooseApplications() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Applications"
+        panel.prompt = "Add"
+        panel.directoryURL = URL(fileURLWithPath: "/Applications", isDirectory: true)
+        panel.allowedContentTypes = [.applicationBundle]
+        panel.allowsMultipleSelection = true
+        panel.canChooseDirectories = false
+        guard panel.runModal() == .OK else { return }
+        _ = addApplications(at: panel.urls)
+    }
+
+    @discardableResult
+    private func addApplications(at urls: [URL]) -> Bool {
+        urls.reduce(false) { added, url in
+            store.addRule(forApplicationAt: url) || added
+        }
+    }
+
+    private func copySelectedRules() {
+        copyRules(withIDs: selectedRuleIDs)
+    }
+
+    private func copyRules(withIDs ids: Set<WindowRule.ID>) {
+        let text = store.rules
+            .filter { ids.contains($0.id) }
+            .map { "\($0.applicationName)\t\($0.bundleIdentifier)\t\($0.placement.label)" }
+            .joined(separator: "\n")
+        guard !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
+    private func removeSelectedRules() {
+        removeRules(withIDs: selectedRuleIDs)
+    }
+
+    private func removeRules(withIDs ids: Set<WindowRule.ID>) {
+        store.removeRules(withIDs: ids, undoManager: undoManager)
+        selectedRuleIDs.subtract(ids)
     }
 }
 
