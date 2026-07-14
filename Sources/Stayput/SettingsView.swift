@@ -317,8 +317,8 @@ private struct GeneralSettingsPane: View {
 
 private struct AboutPane: View {
     private var versionText: String {
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
-        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.1"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "2"
         return "Version \(version) (\(build))"
     }
 
@@ -394,7 +394,10 @@ private struct RuleRow: View {
 
             Toggle("Size", isOn: $rule.restoreSize)
                 .fixedSize()
-                .help("Restore the remembered window size")
+                .disabled(rule.placement.usesDisplayRelativeSize)
+                .help(rule.placement.usesDisplayRelativeSize
+                    ? "Half-screen placements use the current display size"
+                    : "Restore the remembered window size")
             Toggle("Position", isOn: $rule.restorePosition)
                 .fixedSize()
                 .help("Restore the configured window position")

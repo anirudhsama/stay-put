@@ -14,7 +14,7 @@ Stay Put restores the primary windows of apps you choose after display changes, 
 
 ## Features
 
-- Position windows at the center, left edge, or right edge of their current display.
+- Center windows or fill the left or right half of their current display.
 - Restore size and position independently for every app.
 - Automatically remember user-driven window resizes.
 - Reapply rules after monitor changes, wake, login, and configured app launches.
@@ -29,12 +29,12 @@ Stay Put restores the primary windows of apps you choose after display changes, 
 
 Stay Put filters an app's Accessibility windows to standard, non-modal windows, selects the largest candidate during startup restoration, and tracks that exact Accessibility element until it closes. Windows created afterward are treated as pop-outs and ignored.
 
-Placement and sizing are independent:
+Placement and sizing work as follows:
 
-- **Center**, **Left**, and **Right** control position.
-- **Size** restores the remembered dimensions.
+- **Center** uses the remembered dimensions when **Size** is enabled.
+- **Left Half** and **Right Half** resize to the selected half of the current display.
 - **Position** restores the selected placement.
-- With Size disabled, Stay Put preserves the window's current dimensions.
+- With **Size** disabled for a centered window, Stay Put preserves its current dimensions.
 
 ## Requirements
 

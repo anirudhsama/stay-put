@@ -9,6 +9,9 @@ final class RuleStore: ObservableObject {
         didSet {
             save()
             manager.syncObservers(for: rules)
+            if applicationBehaviorChanged(from: oldValue) {
+                scheduleReapply(after: .milliseconds(150))
+            }
         }
     }
     @Published var runningApplications: [RunningApplication] = []
@@ -190,6 +193,17 @@ final class RuleStore: ObservableObject {
             store.removeRules(withIDs: ids, undoManager: undoManager)
         }
         undoManager?.setActionName(restored.count == 1 ? "Restore Rule" : "Restore Rules")
+    }
+
+    private func applicationBehaviorChanged(from previousRules: [WindowRule]) -> Bool {
+        guard !previousRules.isEmpty else { return false }
+        let previousByID = Dictionary(uniqueKeysWithValues: previousRules.map { ($0.id, $0) })
+        return rules.contains { rule in
+            guard let previous = previousByID[rule.id] else { return true }
+            return rule.placement != previous.placement ||
+                rule.restoreSize != previous.restoreSize ||
+                rule.restorePosition != previous.restorePosition
+        }
     }
 
     private func installObservers() {

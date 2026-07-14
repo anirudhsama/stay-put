@@ -46,12 +46,12 @@ import Testing
     #expect(frame == .init(x: 0, y: 25, width: 800, height: 575))
 }
 
-@Test func positionsRememberedSizeAtDisplayEdges() {
+@Test func fillsDisplayHalves() {
     let visible = CGRect(x: -1920, y: 0, width: 1920, height: 1080)
     let size = CGSize(width: 800, height: 600)
 
     #expect(PlacementGeometry.frame(for: .leftHalf, visibleFrame: visible, centeredSize: size) ==
-        .init(x: -1920, y: 240, width: 800, height: 600))
+        .init(x: -1920, y: 0, width: 960, height: 1080))
     #expect(PlacementGeometry.frame(for: .rightHalf, visibleFrame: visible, centeredSize: size) ==
-        .init(x: -800, y: 240, width: 800, height: 600))
+        .init(x: -960, y: 0, width: 960, height: 1080))
 }

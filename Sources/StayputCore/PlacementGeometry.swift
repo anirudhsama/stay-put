@@ -13,16 +13,16 @@ public enum PlacementGeometry {
         case .leftHalf:
             return CGRect(
                 x: visibleFrame.minX,
-                y: visibleFrame.midY - height / 2,
-                width: width,
-                height: height
+                y: visibleFrame.minY,
+                width: visibleFrame.width / 2,
+                height: visibleFrame.height
             ).integral
         case .rightHalf:
             return CGRect(
-                x: visibleFrame.maxX - width,
-                y: visibleFrame.midY - height / 2,
-                width: width,
-                height: height
+                x: visibleFrame.midX,
+                y: visibleFrame.minY,
+                width: visibleFrame.width / 2,
+                height: visibleFrame.height
             ).integral
         case .center:
             return CGRect(

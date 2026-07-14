@@ -10,8 +10,15 @@ public enum WindowPlacement: String, Codable, CaseIterable, Identifiable, Sendab
     public var label: String {
         switch self {
         case .center: "Center"
-        case .leftHalf: "Left"
-        case .rightHalf: "Right"
+        case .leftHalf: "Left Half"
+        case .rightHalf: "Right Half"
+        }
+    }
+
+    public var usesDisplayRelativeSize: Bool {
+        switch self {
+        case .center: false
+        case .leftHalf, .rightHalf: true
         }
     }
 }

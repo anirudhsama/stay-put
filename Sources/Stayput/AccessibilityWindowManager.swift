@@ -214,7 +214,9 @@ final class AccessibilityWindowManager {
         switch notification {
         case kAXWindowCreatedNotification:
             // Once a primary is bound, all later windows are pop-outs for our purposes.
-            guard primaryWindows[pid] == nil else { return }
+            if let primary = primaryWindows[pid], frame(of: primary) != nil {
+                return
+            }
             if isPrimaryCandidate(element) {
                 primaryWindows[pid] = element
                 observeChanges(of: element, pid: pid)
@@ -223,6 +225,9 @@ final class AccessibilityWindowManager {
         case kAXUIElementDestroyedNotification:
             guard let primary = primaryWindows[pid], CFEqual(primary, element) else { return }
             primaryWindows[pid] = nil
+            // Electron apps can create their replacement window before destroying the old one.
+            // Re-select here because its earlier creation notification was intentionally ignored.
+            apply(rule, to: pid, reselectPrimary: true)
         case kAXWindowResizedNotification:
             guard let primary = primaryWindows[pid],
                   CFEqual(primary, element),
@@ -272,7 +277,7 @@ final class AccessibilityWindowManager {
     private func place(_ window: AXUIElement, using rule: WindowRule, pid: pid_t) {
         guard let currentFrame = frame(of: window) else { return }
         let screen = targetScreen(for: currentFrame)
-        var target = PlacementGeometry.frame(
+        let target = PlacementGeometry.frame(
             for: rule.placement,
             visibleFrame: screen.visibleFrame,
             centeredSize: rule.restoreSize
@@ -280,10 +285,7 @@ final class AccessibilityWindowManager {
                 : currentFrame.size
         )
 
-        if !rule.restoreSize {
-            target.size = currentFrame.size
-        }
-        if rule.restoreSize {
+        if rule.restoreSize || rule.placement.usesDisplayRelativeSize {
             suppressResizeEvents(for: window)
             // Resize first so apps with minimum sizes do not offset the final position.
             setSize(target.size, of: window)
