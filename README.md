@@ -49,7 +49,7 @@ Placement and sizing work as follows:
 open "dist/Stay Put.app"
 ```
 
-The build script creates a signed app bundle at `dist/Stay Put.app`. It uses the first available Apple Development signing identity and falls back to ad-hoc signing when none is available. You can override the identity explicitly:
+The build script creates a signed app bundle at `dist/Stay Put.app`. It uses the first available Apple Development signing identity and stops if none is available, because ad-hoc signing invalidates Accessibility authorization on every rebuild. You can override the identity explicitly:
 
 ```sh
 CODE_SIGN_IDENTITY="Apple Development: Your Name (TEAMID)" ./scripts/build-app.sh

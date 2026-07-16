@@ -5,6 +5,12 @@ ROOT="${0:A:h:h}"
 APP="$ROOT/dist/Stay Put.app"
 CONTENTS="$APP/Contents"
 
+SIGN_IDENTITY="${CODE_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development:[^"]*\)"/\1/p' | head -1)}"
+if [[ -z "$SIGN_IDENTITY" ]]; then
+  echo "No Apple Development signing identity found. Unlock the login keychain or set CODE_SIGN_IDENTITY." >&2
+  exit 1
+fi
+
 cd "$ROOT"
 swift build -c release --product Stayput
 
@@ -19,8 +25,8 @@ plutil -insert CFBundleDisplayName -string "Stay Put" "$CONTENTS/Info.plist"
 plutil -insert CFBundleIdentifier -string com.anirudh.stayput "$CONTENTS/Info.plist"
 plutil -insert CFBundleExecutable -string Stayput "$CONTENTS/Info.plist"
 plutil -insert CFBundlePackageType -string APPL "$CONTENTS/Info.plist"
-plutil -insert CFBundleShortVersionString -string 1.1 "$CONTENTS/Info.plist"
-plutil -insert CFBundleVersion -string 2 "$CONTENTS/Info.plist"
+plutil -insert CFBundleShortVersionString -string 1.3 "$CONTENTS/Info.plist"
+plutil -insert CFBundleVersion -string 3 "$CONTENTS/Info.plist"
 plutil -insert NSHumanReadableCopyright -string "Copyright © 2026 Anirudh Coontoor" "$CONTENTS/Info.plist"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$CONTENTS/Info.plist"
 plutil -insert NSPrincipalClass -string NSApplication "$CONTENTS/Info.plist"
@@ -28,6 +34,5 @@ if [[ -f "$CONTENTS/Resources/AppIcon.icns" ]]; then
   plutil -insert CFBundleIconFile -string AppIcon "$CONTENTS/Info.plist"
 fi
 
-SIGN_IDENTITY="${CODE_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development:[^"]*\)"/\1/p' | head -1)}"
-codesign --force --deep --sign "${SIGN_IDENTITY:--}" "$APP"
+codesign --force --deep --sign "$SIGN_IDENTITY" "$APP"
 echo "$APP"

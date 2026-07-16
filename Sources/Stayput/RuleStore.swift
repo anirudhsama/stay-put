@@ -213,7 +213,12 @@ final class RuleStore: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.scheduleReapply(after: .seconds(2)) }
+            Task { @MainActor in
+                self?.scheduleReapply(
+                    after: .milliseconds(250),
+                    additionalDelays: [.seconds(1), .seconds(3)]
+                )
+            }
         })
 
         let workspaceCenter = NSWorkspace.shared.notificationCenter
@@ -268,12 +273,20 @@ final class RuleStore: ObservableObject {
         }
     }
 
-    private func scheduleReapply(after delay: Duration) {
+    private func scheduleReapply(
+        after delay: Duration,
+        additionalDelays: [Duration] = []
+    ) {
         reapplyTask?.cancel()
         reapplyTask = Task { [weak self] in
             try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
             self?.applySilently()
+            for delay in additionalDelays {
+                try? await Task.sleep(for: delay)
+                guard !Task.isCancelled else { return }
+                self?.applySilently()
+            }
         }
     }
 

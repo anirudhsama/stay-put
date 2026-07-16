@@ -124,6 +124,14 @@ final class AccessibilityWindowManager {
             kAXWindowCreatedNotification as CFString,
             context
         ) == .success else { return }
+        for notification in [kAXMainWindowChangedNotification, kAXFocusedWindowChangedNotification] {
+            AXObserverAddNotification(
+                observer,
+                application,
+                notification as CFString,
+                context
+            )
+        }
 
         observers[pid] = observer
         CFRunLoopAddSource(
@@ -174,6 +182,13 @@ final class AccessibilityWindowManager {
         }
         primaryWindows[pid] = nil
 
+        let application = AXUIElementCreateApplication(pid)
+        if let mainWindow = elementAttribute(kAXMainWindowAttribute, of: application),
+           isMainWindowCandidate(mainWindow) {
+            primaryWindows[pid] = mainWindow
+            return mainWindow
+        }
+
         let candidate = windows(for: pid)
             .filter(isPrimaryCandidate)
             .max { lhs, rhs in
@@ -184,6 +199,11 @@ final class AccessibilityWindowManager {
             primaryWindows[pid] = candidate
         }
         return candidate
+    }
+
+    private func isMainWindowCandidate(_ window: AXUIElement) -> Bool {
+        stringAttribute(kAXRoleAttribute, of: window) == kAXWindowRole &&
+            boolAttribute(kAXModalAttribute, of: window) != true
     }
 
     private func isPrimaryCandidate(_ window: AXUIElement) -> Bool {
@@ -222,6 +242,11 @@ final class AccessibilityWindowManager {
                 observeChanges(of: element, pid: pid)
                 place(element, using: rule, pid: pid)
             }
+        case kAXMainWindowChangedNotification, kAXFocusedWindowChangedNotification:
+            if let primary = primaryWindows[pid], frame(of: primary) != nil {
+                return
+            }
+            apply(rule, to: pid, reselectPrimary: true)
         case kAXUIElementDestroyedNotification:
             guard let primary = primaryWindows[pid], CFEqual(primary, element) else { return }
             primaryWindows[pid] = nil
@@ -272,6 +297,14 @@ final class AccessibilityWindowManager {
             return nil
         }
         return value as? Bool
+    }
+
+    private func elementAttribute(_ attribute: String, of element: AXUIElement) -> AXUIElement? {
+        var value: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, attribute as CFString, &value) == .success,
+              let value,
+              CFGetTypeID(value) == AXUIElementGetTypeID() else { return nil }
+        return (value as! AXUIElement)
     }
 
     private func place(_ window: AXUIElement, using rule: WindowRule, pid: pid_t) {
