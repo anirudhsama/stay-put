@@ -5,6 +5,12 @@ import StayputCore
 
 @MainActor
 final class RuleStore: ObservableObject {
+    private struct DisplaySnapshot: Equatable {
+        let id: UInt32
+        let frame: CGRect
+        let visibleFrame: CGRect
+    }
+
     @Published var rules: [WindowRule] = [] {
         didSet {
             save()
@@ -26,15 +32,20 @@ final class RuleStore: ObservableObject {
     private var resizeCaptureTasks: [pid_t: Task<Void, Never>] = [:]
     private var observers: [NSObjectProtocol] = []
     private var permissionTimer: Timer?
+    private var displayTimer: Timer?
+    private var displayConfiguration: [DisplaySnapshot] = []
+    private var suppressResizeCaptureUntil = Date.distantPast
     private var applicationIconCache: [String: NSImage] = [:]
 
     init() {
         load()
+        displayConfiguration = currentDisplayConfiguration()
         permissionGranted = manager.isTrusted
         launchAtLogin = SMAppService.mainApp.status == .enabled
         refreshApplications()
         installObservers()
         startPermissionPolling()
+        startDisplayPolling()
         manager.syncObservers(for: rules)
         manager.onPrimaryWindowResized = { [weak self] pid, size in
             self?.primaryWindowDidResize(pid: pid, size: size)
@@ -214,10 +225,8 @@ final class RuleStore: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
-                self?.scheduleReapply(
-                    after: .milliseconds(250),
-                    additionalDelays: [.seconds(1), .seconds(3)]
-                )
+                self?.displayConfiguration = self?.currentDisplayConfiguration() ?? []
+                self?.beginDisplayTransition()
             }
         })
 
@@ -227,7 +236,10 @@ final class RuleStore: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor in self?.scheduleReapply(after: .seconds(1)) }
+            Task { @MainActor in
+                self?.displayConfiguration = self?.currentDisplayConfiguration() ?? []
+                self?.beginDisplayTransition()
+            }
         })
         observers.append(workspaceCenter.addObserver(
             forName: NSWorkspace.didLaunchApplicationNotification,
@@ -273,6 +285,47 @@ final class RuleStore: ObservableObject {
         }
     }
 
+    private func startDisplayPolling() {
+        let timer = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.detectDisplayConfigurationChange() }
+        }
+        RunLoop.main.add(timer, forMode: .common)
+        displayTimer = timer
+    }
+
+    private func currentDisplayConfiguration() -> [DisplaySnapshot] {
+        NSScreen.screens.map { screen in
+            let id = (screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber)?
+                .uint32Value ?? 0
+            return DisplaySnapshot(id: id, frame: screen.frame, visibleFrame: screen.visibleFrame)
+        }.sorted { lhs, rhs in
+            if lhs.id != rhs.id { return lhs.id < rhs.id }
+            if lhs.frame.minX != rhs.frame.minX { return lhs.frame.minX < rhs.frame.minX }
+            return lhs.frame.minY < rhs.frame.minY
+        }
+    }
+
+    @discardableResult
+    private func detectDisplayConfigurationChange() -> Bool {
+        let current = currentDisplayConfiguration()
+        guard current != displayConfiguration else { return false }
+        displayConfiguration = current
+        beginDisplayTransition()
+        return true
+    }
+
+    private func beginDisplayTransition() {
+        suppressResizeCaptureUntil = Date().addingTimeInterval(10)
+        for task in resizeCaptureTasks.values {
+            task.cancel()
+        }
+        resizeCaptureTasks.removeAll()
+        scheduleReapply(
+            after: .milliseconds(250),
+            additionalDelays: [.seconds(1), .seconds(3), .seconds(5)]
+        )
+    }
+
     private func scheduleReapply(
         after delay: Duration,
         additionalDelays: [Duration] = []
@@ -313,6 +366,9 @@ final class RuleStore: ObservableObject {
     }
 
     private func primaryWindowDidResize(pid: pid_t, size: CGSize) {
+        if detectDisplayConfigurationChange() || Date() < suppressResizeCaptureUntil {
+            return
+        }
         resizeCaptureTasks[pid]?.cancel()
         resizeCaptureTasks[pid] = Task { [weak self] in
             try? await Task.sleep(for: .milliseconds(500))
