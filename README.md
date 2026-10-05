@@ -36,6 +36,19 @@ Placement and sizing work as follows:
 - **Position** restores the selected placement.
 - With **Size** disabled for a centered window, Stay Put preserves its current dimensions.
 
+## Install
+
+1. Download `StayPut-<version>.dmg` from [Releases](https://github.com/anirudhsama/stay-put/releases/latest)
+   and drag Stay Put into Applications.
+2. The app is self-signed rather than notarized, so macOS blocks the first launch. Open it once,
+   then go to **System Settings → Privacy & Security** and click **Open Anyway**. Or run:
+
+   ```sh
+   xattr -dr com.apple.quarantine "/Applications/Stay Put.app"
+   ```
+
+Releases run on Apple silicon.
+
 ## Requirements
 
 - macOS 14 or later
@@ -72,6 +85,12 @@ swift run Stayput
 ```
 
 The development executable has a different process identity from the app bundle, so use the bundled build when testing Accessibility permissions or launch at login.
+
+### Releasing
+
+Releases are built by the **Release** workflow (Actions → Release → version `X.Y.Z`). It tests, signs the
+app, and publishes a DMG to GitHub Releases. `scripts/setup-release-signing.sh` creates the signing
+identity once; every release must use it, or users have to grant Accessibility access again.
 
 ## Privacy
 

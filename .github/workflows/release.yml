@@ -1,0 +1,107 @@
+name: Release
+
+run-name: "Stay Put ${{ inputs.version }} #${{ github.run_number }}"
+
+# Manually triggered from the Actions tab. Publishes vX.Y.Z with a DMG.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version, e.g. 1.6.0"
+        type: string
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  SIGNING_IDENTITY: Stay Put Self-Signed
+
+jobs:
+  release:
+    # The macOS 26 SDK: SettingsView uses macOS 26 API behind #available.
+    runs-on: macos-26
+    env:
+      VERSION: ${{ inputs.version }}
+      TAG: v${{ inputs.version }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Tags and history, for the commit list in the release notes.
+          fetch-depth: 0
+
+      # CFBundleVersion, monotonic across runs. Offset past 5, the last locally built release (1.5).
+      - name: Set build number
+        run: echo "BUILD_NUMBER=$((GITHUB_RUN_NUMBER + 5))" >> "$GITHUB_ENV"
+
+      - name: Validate version
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must be MAJOR.MINOR.PATCH, got '$VERSION'"
+            exit 1
+          fi
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::$TAG already exists"
+            exit 1
+          fi
+
+      - name: Test
+        run: swift test
+
+      # The same self-signed identity on every release: macOS keys the Accessibility grant on it,
+      # so a different certificate makes users re-grant access after updating.
+      - name: Import signing certificate
+        env:
+          P12_BASE64: ${{ secrets.SIGNING_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.SIGNING_P12_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KPW="$(openssl rand -base64 24)"
+          echo "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KPW" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KPW" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" -P "$P12_PASSWORD" -A -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KPW" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | sed 's/"//g')
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+      - name: Build app
+        env:
+          CODE_SIGN_IDENTITY: ${{ env.SIGNING_IDENTITY }}
+        run: |
+          ./scripts/build-app.sh
+          APP="dist/Stay Put.app"
+          codesign --verify --deep --strict "$APP"
+          codesign -dv "$APP" 2>&1 | grep -E '^(Authority|Identifier)'
+          echo "APP=$APP" >> "$GITHUB_ENV"
+
+      - name: Package DMG
+        run: |
+          STAGE="$(mktemp -d)"
+          cp -R "$APP" "$STAGE/"
+          ln -s /Applications "$STAGE/Applications"
+          diskutil image create from "$STAGE" --format UDZO --volumeName "Stay Put" "dist/StayPut-$VERSION.dmg"
+
+      - name: Compose release notes
+        run: |
+          # Commit subjects since the previous release tag (all history for the first release).
+          BASE="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY"
+          PREV="$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)"
+          {
+            git log --no-merges --format='- %s' ${PREV:+"$PREV..HEAD"}
+            if [ -n "$PREV" ]; then printf '\n[Full changelog](%s/compare/%s...%s)\n' "$BASE" "$PREV" "$TAG"; fi
+          } > "$RUNNER_TEMP/notes.md"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: StayPut-${{ inputs.version }}
+          path: dist/StayPut-${{ inputs.version }}.dmg
+
+      - name: Publish GitHub release
+        run: |
+          gh release create "$TAG" "dist/StayPut-$VERSION.dmg" \
+            --target "$GITHUB_SHA" \
+            --title "Stay Put $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md"

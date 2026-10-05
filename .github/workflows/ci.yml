@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # The macOS 26 SDK: SettingsView uses macOS 26 API behind #available.
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Test
+        run: swift test
+
+      - name: Build app
+        # Ad-hoc signed; only checks that the bundle assembles and the signature is valid.
+        env:
+          CODE_SIGN_IDENTITY: "-"
+        run: |
+          ./scripts/build-app.sh
+          codesign --verify --deep --strict "dist/Stay Put.app"

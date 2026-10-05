@@ -4,6 +4,9 @@ set -euo pipefail
 ROOT="${0:A:h:h}"
 APP="$ROOT/dist/Stay Put.app"
 CONTENTS="$APP/Contents"
+# CI overrides both per release; see .github/workflows/release.yml.
+VERSION="${VERSION:-1.5}"
+BUILD_NUMBER="${BUILD_NUMBER:-5}"
 
 SIGN_IDENTITY="${CODE_SIGN_IDENTITY:-$(security find-identity -v -p codesigning 2>/dev/null | sed -n 's/.*"\(Apple Development:[^"]*\)"/\1/p' | head -1)}"
 if [[ -z "$SIGN_IDENTITY" ]]; then
@@ -25,8 +28,8 @@ plutil -insert CFBundleDisplayName -string "Stay Put" "$CONTENTS/Info.plist"
 plutil -insert CFBundleIdentifier -string com.anirudh.stayput "$CONTENTS/Info.plist"
 plutil -insert CFBundleExecutable -string Stayput "$CONTENTS/Info.plist"
 plutil -insert CFBundlePackageType -string APPL "$CONTENTS/Info.plist"
-plutil -insert CFBundleShortVersionString -string 1.5 "$CONTENTS/Info.plist"
-plutil -insert CFBundleVersion -string 5 "$CONTENTS/Info.plist"
+plutil -insert CFBundleShortVersionString -string "$VERSION" "$CONTENTS/Info.plist"
+plutil -insert CFBundleVersion -string "$BUILD_NUMBER" "$CONTENTS/Info.plist"
 plutil -insert NSHumanReadableCopyright -string "Copyright © 2026 Anirudh Coontoor" "$CONTENTS/Info.plist"
 plutil -insert LSMinimumSystemVersion -string 14.0 "$CONTENTS/Info.plist"
 plutil -insert NSPrincipalClass -string NSApplication "$CONTENTS/Info.plist"
