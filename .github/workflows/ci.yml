@@ -11,10 +11,22 @@ concurrency:
 
 jobs:
   test:
-    # The macOS 26 SDK: SettingsView uses macOS 26 API behind #available.
-    runs-on: macos-26
+    # Xcode 27 (public preview image), matching local builds.
+    runs-on: xcode-27
     steps:
       - uses: actions/checkout@v7
+
+      - name: Select Xcode
+        run: |
+          # The image's default Xcode; fail here rather than mid-build if it isn't 27.
+          XCODE_PATH="$(readlink -f /Applications/Xcode.app)"
+          VERSION_LINE="$(DEVELOPER_DIR="$XCODE_PATH/Contents/Developer" xcodebuild -version | head -n1)"
+          echo "Using $XCODE_PATH ($VERSION_LINE)"
+          if [[ "$VERSION_LINE" != "Xcode 27"* ]]; then
+            echo "::error::expected Xcode 27, got '$VERSION_LINE'"
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$XCODE_PATH/Contents/Developer" >> "$GITHUB_ENV"
 
       - name: Test
         run: swift test

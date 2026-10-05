@@ -19,8 +19,8 @@ env:
 
 jobs:
   release:
-    # The macOS 26 SDK: SettingsView uses macOS 26 API behind #available.
-    runs-on: macos-26
+    # Xcode 27 (public preview image), matching local builds.
+    runs-on: xcode-27
     env:
       VERSION: ${{ inputs.version }}
       TAG: v${{ inputs.version }}
@@ -34,6 +34,18 @@ jobs:
       # CFBundleVersion, monotonic across runs. Offset past 5, the last locally built release (1.5).
       - name: Set build number
         run: echo "BUILD_NUMBER=$((GITHUB_RUN_NUMBER + 5))" >> "$GITHUB_ENV"
+
+      - name: Select Xcode
+        run: |
+          # The image's default Xcode; fail here rather than mid-build if it isn't 27.
+          XCODE_PATH="$(readlink -f /Applications/Xcode.app)"
+          VERSION_LINE="$(DEVELOPER_DIR="$XCODE_PATH/Contents/Developer" xcodebuild -version | head -n1)"
+          echo "Using $XCODE_PATH ($VERSION_LINE)"
+          if [[ "$VERSION_LINE" != "Xcode 27"* ]]; then
+            echo "::error::expected Xcode 27, got '$VERSION_LINE'"
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$XCODE_PATH/Contents/Developer" >> "$GITHUB_ENV"
 
       - name: Validate version
         run: |
@@ -74,6 +86,12 @@ jobs:
           ./scripts/build-app.sh
           APP="dist/Stay Put.app"
           codesign --verify --deep --strict "$APP"
+          # macOS picks the window design from this stamp; below 26 it falls back to the pre-Liquid Glass look.
+          SDK="$(otool -l "$APP/Contents/MacOS/Stayput" | awk '/^ *sdk /{print $2; exit}')"
+          if [[ "${SDK%%.*}" -lt 26 ]]; then
+            echo "::error::binary is stamped sdk $SDK; expected 26 or later (see scripts/build-app.sh)"
+            exit 1
+          fi
           codesign -dv "$APP" 2>&1 | grep -E '^(Authority|Identifier)'
           echo "APP=$APP" >> "$GITHUB_ENV"
 

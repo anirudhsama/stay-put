@@ -15,7 +15,10 @@ if [[ -z "$SIGN_IDENTITY" ]]; then
 fi
 
 cd "$ROOT"
-swift build -c release --product Stayput
+# SwiftPM stamps the deployment target as the SDK version, which keeps the app on the pre-macOS 26
+# design. Stamp the SDK it actually links against so it gets the native Liquid Glass appearance.
+swift build -c release --product Stayput \
+  -Xlinker -platform_version -Xlinker macos -Xlinker 14.0 -Xlinker "$(xcrun --show-sdk-version)"
 
 rm -rf "$APP" "$ROOT/dist/Stayput.app"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"

@@ -30,11 +30,8 @@ final class SettingsWindowController: NSWindowController, NSWindowDelegate {
 
         window.title = "Settings"
         window.titleVisibility = .visible
-        window.titlebarAppearsTransparent = true
         window.toolbarStyle = .automatic
         window.toolbar = NSToolbar(identifier: "SettingsToolbar")
-        window.isOpaque = false
-        window.backgroundColor = .clear
         window.isMovableByWindowBackground = true
         window.minSize = NSSize(width: 760, height: 500)
         window.contentViewController = NSHostingController(

@@ -44,12 +44,9 @@ struct SettingsView: View {
                     .tag(tab)
             }
             .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
-            .background(SidebarVisualEffect())
             .navigationTitle("Settings")
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 220)
             .toolbar(removing: .sidebarToggle)
-            .scrollEdgeEffectStyleSoftIfAvailable()
         } detail: {
             SettingsDetailView(tab: SettingsTab(rawValue: selectedTab) ?? .windows)
         }
@@ -72,20 +69,7 @@ private struct SettingsDetailView: View {
         }
         .navigationTitle(tab.title)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Color(nsColor: .windowBackgroundColor))
     }
-}
-
-private struct SidebarVisualEffect: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSVisualEffectView {
-        let view = NSVisualEffectView()
-        view.material = .sidebar
-        view.blendingMode = .behindWindow
-        view.state = .followsWindowActiveState
-        return view
-    }
-
-    func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 
 private struct WindowRulesPane: View {
@@ -99,27 +83,29 @@ private struct WindowRulesPane: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            if !store.permissionGranted {
-                permissionBanner
-            }
+        // The list fills the pane and scrolls under the toolbar, which supplies the scroll edge effect.
+        rulesList
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                VStack(alignment: .leading, spacing: 10) {
+                    addRuleControls
 
-            rulesList
-            addRuleControls
-
-            HStack {
-                if let status = store.statusMessage {
-                    Text(status)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        if let status = store.statusMessage {
+                            Text(status)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Button("Apply Now") { store.applyNow() }
+                            .keyboardShortcut("r", modifiers: [.command])
+                    }
                 }
-                Spacer()
-                Button("Apply Now") { store.applyNow() }
-                    .keyboardShortcut("r", modifiers: [.command])
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .background(.bar)
+                .overlay(alignment: .top) { Divider() }
             }
-        }
-        .padding(20)
-        .onDeleteCommand(perform: removeSelectedRules)
+            .onDeleteCommand(perform: removeSelectedRules)
         .focusedValue(\.selectedRuleCommands, SelectedRuleCommands(
             canAct: !selectedRuleIDs.isEmpty,
             copy: copySelectedRules,
@@ -143,14 +129,24 @@ private struct WindowRulesPane: View {
     private var rulesList: some View {
         Group {
             if store.rules.isEmpty {
-                ContentUnavailableView(
-                    "No Window Rules",
-                    systemImage: "macwindow.badge.plus",
-                    description: Text("Choose a running app below to create one.")
-                )
-                .frame(maxWidth: .infinity, minHeight: 280)
+                VStack {
+                    if !store.permissionGranted {
+                        permissionBanner
+                            .padding(.horizontal, 20)
+                    }
+                    ContentUnavailableView(
+                        "No Window Rules",
+                        systemImage: "macwindow.badge.plus",
+                        description: Text("Choose a running app below to create one.")
+                    )
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(selection: $selectedRuleIDs) {
+                    if !store.permissionGranted {
+                        permissionBanner
+                            .listRowSeparator(.hidden)
+                    }
                     ForEach($store.rules) { $rule in
                         RuleRow(
                             rule: $rule,
@@ -413,13 +409,3 @@ private struct RuleRow: View {
     }
 }
 
-private extension View {
-    @ViewBuilder
-    func scrollEdgeEffectStyleSoftIfAvailable() -> some View {
-        if #available(macOS 26.0, *) {
-            scrollEdgeEffectStyle(.soft, for: .all)
-        } else {
-            self
-        }
-    }
-}
