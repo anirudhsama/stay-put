@@ -35,7 +35,21 @@ final class RuleStore: ObservableObject {
     private var displayTimer: Timer?
     private var displayConfiguration: [DisplaySnapshot] = []
     private var suppressResizeCaptureUntil = Date.distantPast
+    private var screenLocked = RuleStore.isScreenLocked()
+    private var displayTransitionPendingUnlock = false
     private var applicationIconCache: [String: NSImage] = [:]
+
+    private nonisolated(unsafe) static let displayReconfigurationCallback:
+        CGDisplayReconfigurationCallBack = { _, flags, context in
+            guard !flags.contains(.beginConfigurationFlag), let context else { return }
+            let store = Unmanaged<RuleStore>.fromOpaque(context).takeUnretainedValue()
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    store.displayConfiguration = store.currentDisplayConfiguration()
+                    store.beginDisplayTransition()
+                }
+            }
+        }
 
     init() {
         load()
@@ -44,6 +58,10 @@ final class RuleStore: ObservableObject {
         launchAtLogin = SMAppService.mainApp.status == .enabled
         refreshApplications()
         installObservers()
+        CGDisplayRegisterReconfigurationCallback(
+            Self.displayReconfigurationCallback,
+            Unmanaged.passUnretained(self).toOpaque()
+        )
         startPermissionPolling()
         startDisplayPolling()
         manager.syncObservers(for: rules)
@@ -242,6 +260,34 @@ final class RuleStore: ObservableObject {
             }
         })
         observers.append(workspaceCenter.addObserver(
+            forName: NSWorkspace.screensDidWakeNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.displayConfiguration = self?.currentDisplayConfiguration() ?? []
+                self?.beginDisplayTransition()
+            }
+        })
+
+        // Wake-time display changes usually land behind the lock screen, and WindowServer
+        // can still relocate windows after unlock, so rerun those transitions once unlocked.
+        let distributedCenter = DistributedNotificationCenter.default()
+        observers.append(distributedCenter.addObserver(
+            forName: NSNotification.Name("com.apple.screenIsLocked"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.screenLocked = true }
+        })
+        observers.append(distributedCenter.addObserver(
+            forName: NSNotification.Name("com.apple.screenIsUnlocked"),
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in self?.screenDidUnlock() }
+        })
+        observers.append(workspaceCenter.addObserver(
             forName: NSWorkspace.didLaunchApplicationNotification,
             object: nil,
             queue: .main
@@ -314,7 +360,23 @@ final class RuleStore: ObservableObject {
         return true
     }
 
+    private static func isScreenLocked() -> Bool {
+        let session = CGSessionCopyCurrentDictionary() as? [String: Any]
+        return session?["CGSSessionScreenIsLocked"] as? Bool ?? false
+    }
+
+    private func screenDidUnlock() {
+        screenLocked = false
+        guard displayTransitionPendingUnlock else { return }
+        displayTransitionPendingUnlock = false
+        displayConfiguration = currentDisplayConfiguration()
+        beginDisplayTransition()
+    }
+
     private func beginDisplayTransition() {
+        if screenLocked {
+            displayTransitionPendingUnlock = true
+        }
         suppressResizeCaptureUntil = Date().addingTimeInterval(10)
         for task in resizeCaptureTasks.values {
             task.cancel()
